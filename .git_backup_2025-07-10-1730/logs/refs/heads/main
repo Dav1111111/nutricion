@@ -1,0 +1,14 @@
+0000000000000000000000000000000000000000 4fed8c69d8148e1bd3049485104daa79365e61c1 Давид <s354005s@gmail.com> 1751627562 +0300	commit (initial): Initial commit of nutrition_bot project
+4fed8c69d8148e1bd3049485104daa79365e61c1 4fed8c69d8148e1bd3049485104daa79365e61c1 Давид <s354005s@gmail.com> 1751627565 +0300	Branch: renamed refs/heads/main to refs/heads/main
+4fed8c69d8148e1bd3049485104daa79365e61c1 5ad98965a28fb4f4e04a3f92cb9cbe05592f8758 Давид <s354005s@gmail.com> 1751627840 +0300	commit: Очистка репозитория: добавлен .gitignore, удалены лишние файлы
+5ad98965a28fb4f4e04a3f92cb9cbe05592f8758 b1f487afeab3f43f707c8b1cdaa6331687d10874 Давид <s354005s@gmail.com> 1751628363 +0300	commit: Add project source files (excluding ignored)
+b1f487afeab3f43f707c8b1cdaa6331687d10874 f341d1dfcc16ae5e717b244851219d5da13153f8 Давид <s354005s@gmail.com> 1751884687 +0300	commit: Обновлен текст подписки: переименовано в ИИ Нутрициолог, уточнены бесплатные лимиты, удалена приоритетная поддержка
+f341d1dfcc16ae5e717b244851219d5da13153f8 fcba500d88f12580deeacb0d51e746318efe1013 Давид <s354005s@gmail.com> 1751887169 +0300	commit: Обновлено приветственное сообщение /start согласно новому тексту
+fcba500d88f12580deeacb0d51e746318efe1013 b4246748f32c722a537788393feda5ac04127f1d Давид <s354005s@gmail.com> 1751966863 +0300	commit: Оплата: добавлена кнопка отмены и логирование причин отмены платежа
+b4246748f32c722a537788393feda5ac04127f1d b970e00aa38f889b9b01130cc63d6f1e5dad688f Давид <s354005s@gmail.com> 1752064872 +0300	commit: feat(subscription): update subscription flow
+b970e00aa38f889b9b01130cc63d6f1e5dad688f 00a1e788f3fa30be88d617a9eac6d13899cb76e9 Давид <s354005s@gmail.com> 1752065282 +0300	commit (amend): feat(subscription): three-state flow (Subscribe/Cancel/Renew) & remove auto-renewal
+00a1e788f3fa30be88d617a9eac6d13899cb76e9 1b8a68935f988c6c08cb8d25dfd0466c22a5744c Давид <s354005s@gmail.com> 1752065518 +0300	commit (amend): feat(subscription): three-state flow (Subscribe/Cancel/Renew) & remove auto-renewal
+1b8a68935f988c6c08cb8d25dfd0466c22a5744c 3cb4bc9dcc0636225ba4b89d75bef9319ee63944 Давид <s354005s@gmail.com> 1752070386 +0300	commit: feat(meal-edit): add \u270F\uFE0F Edit meal function to update K\u0411\u0416\u0423 after photo analysis
+3cb4bc9dcc0636225ba4b89d75bef9319ee63944 490fabc722302bdc83ecf736b2f09525f299a141 Давид <s354005s@gmail.com> 1752149090 +0300	commit: feat: meal edit scenarios (addition/replace) and ingredient repository method
+490fabc722302bdc83ecf736b2f09525f299a141 39a3bd66c41832190abe9416aff2df86ff2a0cf8 Давид <s354005s@gmail.com> 1752154649 +0300	commit: Initial commit (перенос в новый репозиторий)
+39a3bd66c41832190abe9416aff2df86ff2a0cf8 39a3bd66c41832190abe9416aff2df86ff2a0cf8 Давид <s354005s@gmail.com> 1752154649 +0300	Branch: renamed refs/heads/main to refs/heads/main
