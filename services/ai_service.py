@@ -145,23 +145,6 @@ class AIService:
             # Логирование для диагностики
             logger.info(f"Первые 100 символов ответа: {response_text[:100]}...")
             
-            # Определяем, нужно ли добавлять префикс
-            need_prefix = True
-            if history:
-                # Проверяем, есть ли в истории уже ответ от ассистента с нужным префиксом
-                for h in reversed(history):
-                    if h.get("role") == "assistant":
-                        if h.get("content", "").lower().lstrip().startswith("как нутрициолог"):
-                            need_prefix = False
-                        break # Достаточно проверить последнее сообщение ассистента
-            
-            # Добавляем префикс, если это необходимо и его еще нет
-            if need_prefix and not response_text.lower().lstrip().startswith("как нутрициолог"):
-                # Выбираем правильный префикс для фото
-                prefix = "Как нутрициолог, я проанализировал(а) это блюдо и могу сказать следующее: "
-                response_text = prefix + response_text
-                logger.info("Ответ был исправлен, добавлено вступление для анализа фото.")
-            
             # Финальная очистка
             response_text = self._sanitize_response(response_text)
             
@@ -213,22 +196,6 @@ class AIService:
 
             # Логирование для диагностики
             logger.info(f"Первые 100 символов ответа на вопрос: {response_text[:100]}...")
-            
-            # Определяем, нужно ли добавлять префикс
-            need_prefix = True
-            if history:
-                # Проверяем, есть ли в истории уже ответ от ассистента с нужным префиксом
-                for h in reversed(history):
-                    if h.get("role") == "assistant":
-                        if h.get("content", "").lower().lstrip().startswith("как нутрициолог"):
-                            need_prefix = False
-                        break # Достаточно проверить последнее сообщение ассистента
-
-            # Добавляем префикс, если это необходимо и его еще нет
-            if need_prefix and not response_text.lower().lstrip().startswith("как нутрициолог"):
-                prefix = "Как нутрициолог, я могу сказать, что: "
-                response_text = prefix + response_text
-                logger.info("Ответ был исправлен, добавлено вступление для вопроса о питании.")
             
             # Финальная очистка
             response_text = self._sanitize_response(response_text)
