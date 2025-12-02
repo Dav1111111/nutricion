@@ -6,7 +6,7 @@ import re
 from typing import List, Dict, Optional, Union, Any
 from dotenv import load_dotenv
 from config.config import config
-import openai
+ 
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -22,7 +22,7 @@ except ImportError:  # библиотека может быть не устан�
     AsyncOpenAI = None
 
 class AIService:
-    """Сервис для работы с Anthropic Claude API"""
+    """Сервис для работы с OpenAI API"""
 
     def __init__(self):
         # Разрешён только OpenAI
@@ -53,6 +53,37 @@ class AIService:
         # Максимальное количество сообщений в истории
         self.max_history_length = config.MAX_HISTORY_LENGTH
 
+        # Имя параметра ограничения токенов зависит от модели (gpt-5* → max_completion_tokens)
+        self._use_max_completion_tokens = isinstance(self.model_name, str) and self.model_name.startswith("gpt-5")
+
+    def _token_limit_param(self, tokens: int) -> Dict[str, int]:
+        """Возвращает корректный параметр лимита токенов для текущей модели."""
+        if self._use_max_completion_tokens:
+            return {"max_completion_tokens": tokens}
+        return {"max_tokens": tokens}
+
+    def _supports_temperature(self) -> bool:
+        """Возвращает True, если текущая модель поддерживает явную установку temperature.
+
+        Примечание: семейство gpt-5* (например, "gpt-5-mini") принимает только значение по умолчанию (1)
+        и отклоняет любое заданное значение temperature.
+        """
+        return not (isinstance(self.model_name, str) and self.model_name.startswith("gpt-5"))
+
+    @property
+    def supports_temperature(self) -> bool:
+        """Публичное свойство для использования вне класса (например, в обработчиках)."""
+        return self._supports_temperature()
+
+    def _temperature_param(self, value: Optional[float]) -> Dict[str, float]:
+        """Возвращает словарь с параметром temperature, если модель это поддерживает.
+
+        Иначе возвращает пустой словарь, чтобы не передавать неподдерживаемый параметр.
+        """
+        if not self._supports_temperature() or value is None:
+            return {}
+        return {"temperature": value}
+
     # --- ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ -------------------------------------------------
     @staticmethod
     def _sanitize_response(text: str) -> str:
@@ -64,7 +95,7 @@ class AIService:
 
     async def analyze_food_image(self, image_data, message: str, history: List[Dict] = None) -> str:
         """
-        Анализ фотографии еды с помощью Claude
+        Анализ фотографии еды с помощью OpenAI Vision
 
         Args:
             image_data: Данные изображения (bytes или строка с путем к файлу)
@@ -113,41 +144,143 @@ class AIService:
             
             # Формируем запрос к API
             if self.provider == "openai":
-                # Формируем контент для OpenAI Vision
-                messages = [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{encoded_image}",
-                                    "detail": "low"
+                # Добавляем краткую историю (последние 2-3 обмена), если есть
+                short_history: List[Dict] = []
+                if history:
+                    for msg in history[-3:]:
+                        role = msg.get("role")
+                        content = msg.get("content")
+                        if role and content:
+                            short_history.append({"role": role, "content": content})
+
+                if self._use_max_completion_tokens:
+                    # Ветка для gpt-5*: используем Responses API с input_image
+                    input_blocks: List[Dict[str, Any]] = []
+                    # История: user → input_text, assistant → output_text
+                    for h in short_history:
+                        role_val = h.get("role", "user")
+                        content_val = h.get("content", "")
+                        if not content_val:
+                            continue
+                        if role_val == "assistant":
+                            input_blocks.append(
+                                {
+                                    "role": "assistant",
+                                    "content": [
+                                        {"type": "output_text", "text": content_val}
+                                    ],
                                 }
-                            },
-                            {
-                                "type": "text",
-                                "text": modified_message
-                            }
-                        ]
+                            )
+                        else:
+                            input_blocks.append(
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "input_text", "text": content_val}
+                                    ],
+                                }
+                            )
+                    # Текущий запрос с изображением
+                    input_blocks.append(
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": modified_message},
+                                {
+                                    "type": "input_image",
+                                    "image_url": f"data:image/jpeg;base64,{encoded_image}",
+                                },
+                            ],
+                        }
+                    )
+
+                    # Выполняем запрос через Responses API
+                    # Для Responses используем max_output_tokens
+                    responses_params: Dict[str, Any] = {
+                        "model": self.model_name,
+                        "input": input_blocks,
+                        "max_output_tokens": 2000,
+                        "instructions": system_message,
                     }
-                ]
+                    response = await self.client.responses.create(**responses_params)
 
-                response = await self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    max_tokens=2000,
-                    temperature=0.1
-                )
+                    # Извлекаем текст ответа
+                    response_text: Optional[str] = None
+                    try:
+                        response_text = getattr(response, "output_text", None)
+                    except Exception:
+                        response_text = None
 
-                response_text = response.choices[0].message.content
+                    if not response_text:
+                        # Пытаемся разобрать структуру output -> content -> text
+                        try:
+                            output = getattr(response, "output", None) or response.get("output")  # type: ignore
+                            if output:
+                                for item in output:
+                                    content_list = getattr(item, "content", None) or item.get("content", [])  # type: ignore
+                                    for c in content_list:
+                                        text_candidate = (
+                                            getattr(c, "text", None)
+                                            if hasattr(c, "text")
+                                            else c.get("text")  # type: ignore
+                                        )
+                                        if text_candidate:
+                                            response_text = text_candidate
+                                            break
+                                    if response_text:
+                                        break
+                        except Exception:
+                            response_text = None
+
+                    if not response_text:
+                        response_text = ""
+
+                else:
+                    # Ветка для 4o-семейства: используем Chat Completions Vision
+                    messages = [
+                        {"role": "system", "content": system_message},
+                        *short_history,
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{encoded_image}",
+                                        "detail": "low",
+                                    },
+                                },
+                                {"type": "text", "text": modified_message},
+                            ],
+                        },
+                    ]
+
+                    response = await self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=messages,
+                        **self._temperature_param(0.1),
+                        **self._token_limit_param(2000),
+                    )
+
+                    response_text = response.choices[0].message.content
+                    # Сохраняем токены при наличии истории сообщений
+                    try:
+                        usage_total = getattr(response, "usage", None)
+                        if usage_total and history is not None:
+                            logger.info(f"Vision usage: {usage_total}")
+                    except Exception:
+                        pass
 
             # Логирование для диагностики
             logger.info(f"Первые 100 символов ответа: {response_text[:100]}...")
-            
+
             # Финальная очистка
             response_text = self._sanitize_response(response_text)
-            
+
+            # Защита от пустого ответа для Telegram
+            if not response_text or not str(response_text).strip():
+                response_text = "😔 Не удалось проанализировать изображение. Пожалуйста, попробуйте другое фото." 
+
             return response_text
 
         except Exception as e:
@@ -188,18 +321,22 @@ class AIService:
                 response = await self.client.chat.completions.create(
                     model=self.model_name,
                     messages=[{"role": m.get("role"), "content": m.get("content")} for m in messages],
-                    max_tokens=2000,
-                    temperature=0.1
+                    **self._temperature_param(0.1),
+                    **self._token_limit_param(2000),
                 )
 
                 response_text = response.choices[0].message.content
 
             # Логирование для диагностики
             logger.info(f"Первые 100 символов ответа на вопрос: {response_text[:100]}...")
-            
+
             # Финальная очистка
             response_text = self._sanitize_response(response_text)
-            
+
+            # Защита от пустого ответа для Telegram
+            if not response_text or not str(response_text).strip():
+                response_text = "😔 Не удалось получить ответ. Пожалуйста, попробуйте снова." 
+
             return response_text
 
         except Exception as e:
@@ -271,9 +408,9 @@ class AIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_tokens=1024,
-                temperature=0,
-                response_format={"type": "json_object"}
+                **self._temperature_param(0),
+                response_format={"type": "json_object"},
+                **self._token_limit_param(1024),
             )
             
             response_text = response.choices[0].message.content
@@ -363,8 +500,8 @@ class AIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_tokens=3500,
-                temperature=0.3
+                **self._temperature_param(0.3),
+                **self._token_limit_param(3500),
             )
 
             return response.choices[0].message.content
@@ -373,7 +510,7 @@ class AIService:
             logger.error(f"Ошибка при генерации плана питания: {str(e)}")
             return "😔 Произошла ошибка при генерации плана питания. Пожалуйста, попробуйте позже."
 
-    async def generate_nutrition_report(self, meal_logs: List[Dict], start_date: str, end_date: str) -> str:
+    async def generate_nutrition_report(self, meals_data: List[Dict], goals_data: Dict, start_date: str, end_date: str) -> str:
         """
         Анализ прогресса питания и генерация отчета
         """
@@ -413,8 +550,8 @@ class AIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_tokens=2500,
-                temperature=0.2
+                **self._temperature_param(0.2),
+                **self._token_limit_param(2500),
             )
 
             return response.choices[0].message.content
@@ -502,8 +639,8 @@ class AIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                max_tokens=1500,
-                temperature=0.2,
+                **self._temperature_param(0.2),
+                **self._token_limit_param(1500),
             )
             return response.choices[0].message.content
 

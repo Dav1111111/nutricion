@@ -56,7 +56,7 @@ if [[ ! -f .env ]]; then
 [ВНИМАНИЕ] Файл .env не найден.
 Создайте его в корне проекта и укажите минимум две переменные:
   TELEGRAM_BOT_TOKEN=ваш_токен_бота_telegram
-  ANTHROPIC_API_KEY=ваш_ключ_api_anthropic
+  OPENAI_API_KEY=ваш_ключ_api_openai
 Также можно задать DATABASE_URL (по-умолчанию используется SQLite).
 EOF
   exit 1

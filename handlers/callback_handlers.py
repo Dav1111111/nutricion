@@ -12,6 +12,7 @@ from database.repository import nutritional_goal_repository, user_preference_rep
 from database.subscription_repository import subscription_repository, usage_repository
 from services.payment_service import payment_service
 from config.config import config
+from services.graspil_service import graspil_service
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -347,6 +348,9 @@ class CallbackHandlers:
     async def handle_subscribe(callback: types.CallbackQuery, db: AsyncSession):
         """Обработчик кнопки подписки"""
         try:
+            # Отправляем событие в Graspil: узнал тарифы
+            await graspil_service.send_view_tariffs_event(callback.from_user.id)
+            
             user = await user_repository.get_by_telegram_id(db, callback.from_user.id)
             if not user:
                 await callback.answer("⚠️ Пользователь не найден. Используйте /start.")
@@ -378,6 +382,9 @@ class CallbackHandlers:
             )
             
             if payment_info:
+                # Отправляем событие в Graspil: нажал оплатить (показана форма оплаты)
+                await graspil_service.send_click_pay_event(callback.from_user.id)
+                
                 # Сохраняем информацию о платеже
                 await subscription_repository.create_subscription(
                     db,
@@ -440,6 +447,13 @@ class CallbackHandlers:
                 if subscription:
                     # Сбрасываем счетчики
                     await usage_repository.reset_usage(db, subscription.user_id)
+                    
+                    # Отправляем событие в Graspil: успешная покупка
+                    await graspil_service.send_purchase_event(
+                        callback.from_user.id,
+                        amount=float(subscription.amount),
+                        currency="RUB"
+                    )
                     
                     end_date = subscription.end_date.strftime("%d.%m.%Y")
                     await callback.message.edit_text(
@@ -615,6 +629,7 @@ class CallbackHandlers:
             
             # Отменяем платеж
             from models.database import UserSubscription
+            from sqlalchemy import select
             result = await db.execute(
                 select(UserSubscription).where(UserSubscription.payment_id == payment_id)
             )

@@ -15,7 +15,7 @@ NutritionBot - это мощный Telegram-бот для анализа пит�
 
 - **Python 3.9+**
 - **Aiogram 3.2+**: современный фреймворк для создания Telegram-ботов
-- **Anthropic API (Claude 3.5 Haiku)**: для анализа изображений и ответов на вопросы
+ - **OpenAI API (GPT-4o/mini Vision)**: для анализа изображений и ответов на вопросы
 - **SQLAlchemy**: ORM для работы с базой данных
 - **SQLite**: легкая база данных для хранения информации о пользователях и их питании
 
@@ -37,7 +37,7 @@ pip install -r requirements.txt
 3. Создайте файл `.env` с необходимыми переменными окружения:
 ```
 TELEGRAM_BOT_TOKEN=ваш_токен_бота_telegram
-ANTHROPIC_API_KEY=ваш_ключ_api_anthropic
+OPENAI_API_KEY=ваш_ключ_api_openai
 DATABASE_URL=sqlite+aiosqlite:///./bot_database.db
 ```
 
@@ -103,5 +103,5 @@ nutrition_bot/
 
 ## Благодарности
 
-- Anthropic за предоставление API Claude для анализа изображений и обработки текста
+ - OpenAI за предоставление API для мультимодального анализа и обработки текста
 - Разработчикам Aiogram за отличный фреймворк для создания Telegram-ботов

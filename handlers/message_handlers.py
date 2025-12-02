@@ -11,18 +11,26 @@ from aiogram.exceptions import TelegramBadRequest
 
 from handlers.command_handlers import UserStates
 from services.ai_service import ai_service
-from database.repository import user_repository, message_repository, meal_log_repository
-from database.repository import ingredient_repository, feedback_repository, nutritional_goal_repository
+from database.repository import (
+    user_repository,
+    message_repository,
+    meal_log_repository,
+    ingredient_repository,
+    feedback_repository,
+    nutritional_goal_repository,
+    user_preference_repository,
+)
 from database.subscription_repository import subscription_repository, usage_repository
 from utils.image_utils import image_utils
 from config.config import config
+from services.graspil_service import graspil_service
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Максимальный размер изображения в байтах
-MAX_IMAGE_SIZE = 4 * 1024 * 1024  # 4MB
+from config.config import config
+MAX_IMAGE_SIZE = config.MAX_IMAGE_SIZE
 
 class MessageHandlers:
     """Обработчики сообщений бота"""
@@ -138,7 +146,7 @@ class MessageHandlers:
                 image_path=image_path
             )
             
-            logger.info("Начинаю анализ изображения с помощью Claude 3.5 Haiku")
+            logger.info("Начинаю анализ изображения с помощью OpenAI Vision")
 
             # Анализ изображения с помощью AI
             analysis = await ai_service.analyze_food_image(optimized_image, user_message, history)
@@ -215,6 +223,12 @@ class MessageHandlers:
             except TelegramBadRequest:
                 sent_message = await message.answer(full_analysis, reply_markup=feedback_kb)
 
+            # Проверяем, первое ли это фото
+            usage = await usage_repository.get_or_create_usage(db, user.id)
+            if usage.photos_used == 0:
+                # Отправляем событие в Graspil: первое фото еды
+                await graspil_service.send_first_photo_event(message.from_user.id)
+            
             # Увеличиваем счетчик использования
             await usage_repository.increment_photos(db, user.id)
 
@@ -234,6 +248,17 @@ class MessageHandlers:
         """Обработчик текстовых сообщений"""
         # Игнорируем сообщения, начинающиеся с /, так как это команды
         if message.text.startswith('/'):
+            return
+
+        # Проверка текущего состояния для отладки
+        current_state = await state.get_state()
+        logger.info(f"Processing text: '{message.text}', State: {current_state}")
+        
+        # Если активно состояние регистрации, но мы попали сюда — значит что-то не так с роутингом.
+        # Но чтобы не отвечать "Извините...", мы можем просто игнорировать сообщение или попробовать обработать его здесь (плохая практика).
+        if current_state and "RegistrationStates" in str(current_state):
+            logger.warning(f"Text caught in process_text during registration. State: {current_state}")
+            # Можно попробовать перенаправить, но лучше просто вернуть return, чтобы бот не отвечал "Извините"
             return
 
         # ---- Новое: реагируем на приветствия без префикса "Как нутрициолог..." ----
@@ -573,15 +598,21 @@ class MessageHandlers:
             # 2) Если ключевых слов нет, делаем дешёвую LLM-классификацию (1-2 токена)
             if not is_nutri:
                 try:
-                    clf_resp = await ai_service.client.chat.completions.create(
-                        model=config.GPT_MODEL,
-                        messages=[
+                    # Формируем параметры вызова с учётом ограничений моделей gpt-5*
+                    clf_params = {
+                        "model": config.GPT_MODEL,
+                        "messages": [
                             {"role": "system", "content": "Ответь одним словом: YES, если вопрос относится к питанию, еде, диетам, нутриентам, похудению, набору веса или здоровому образу жизни; иначе NO."},
                             {"role": "user", "content": message.text}
                         ],
-                        max_tokens=1,
-                        temperature=0,
-                    )
+                    }
+                    # Корректный параметр лимита токенов для текущей модели
+                    clf_params.update(ai_service._token_limit_param(1))
+                    # Температура задаётся только если поддерживается моделью
+                    if ai_service.supports_temperature:
+                        clf_params["temperature"] = 0
+
+                    clf_resp = await ai_service.client.chat.completions.create(**clf_params)
                     answer = clf_resp.choices[0].message.content.strip().lower()
                     is_nutri = answer.startswith("y") or answer.startswith("д")  # yes / да
                 except Exception as _:
@@ -638,10 +669,11 @@ class MessageHandlers:
                     logger.warning(f"Не удалось удалить сообщение о обработке: {str(delete_error)}")
 
             # Отправка ответа без дополнительных кнопок
+            safe_response = response if (response and response.strip()) else "😔 Не удалось получить ответ. Пожалуйста, попробуйте снова."
             try:
-                sent_message = await message.answer(response, parse_mode="Markdown")
+                sent_message = await message.answer(safe_response, parse_mode="Markdown")
             except TelegramBadRequest:
-                sent_message = await message.answer(response)
+                sent_message = await message.answer(safe_response)
 
             # Увеличиваем счетчик использования
             await usage_repository.increment_questions(db, user_id)
@@ -677,12 +709,14 @@ class MessageHandlers:
 
             cal, prot, fat, carb = map(float, parts)
             from database.repository import meal_log_repository
-            await meal_log_repository.update(db, meal_id, {
-                "calories": cal,
-                "proteins": prot,
-                "fats": fat,
-                "carbs": carb
-            })
+            await meal_log_repository.update(
+                db,
+                meal_id,
+                calories=cal,
+                proteins=prot,
+                fats=fat,
+                carbs=carb,
+            )
 
             await message.answer("✅ Запись обновлена!")
             await state.clear()
@@ -720,7 +754,9 @@ class MessageHandlers:
 
             merge_ingredients = not is_replacement  # если явная замена — перезаписываем
 
-            existing_desc = ", ".join(old_ing_names) if old_ing_names else current_log.meal_name
+            # Получаем текущую запись до использования
+            current_log = await meal_log_repository.get_by_id(db, meal_id)
+            existing_desc = ", ".join(old_ing_names) if old_ing_names else (current_log.meal_name if current_log else "")
 
             # Формируем расширенный запрос, учитывающий уже известные ингредиенты
             user_message = (
@@ -739,8 +775,7 @@ class MessageHandlers:
             analysis_text = await ai_service.answer_nutrition_question(user_message)
             nutrition_data_new = await ai_service.extract_nutrition_data(analysis_text)
 
-            # Получаем текущие данные записи
-            current_log = await meal_log_repository.get_by_id(db, meal_id)
+            # Текущая запись уже получена выше как current_log
 
             # Собираем старые данные
             nutrition_data_old = {

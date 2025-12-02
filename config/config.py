@@ -27,8 +27,8 @@ class Config:
         logger.error("TELEGRAM_BOT_TOKEN не найден в переменных окружения")
         raise ValueError("TELEGRAM_BOT_TOKEN не найден в переменных окружения")
 
-    # Ключ API Anthropic Claude (более не используется).
-    # Оставляем переменную для совместимости, но она больше не обязательна.
+    # Ранее использовался Anthropic; полностью перешли на OpenAI.
+    # Переменная оставлена для обратной совместимости, но не используется.
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
     # URL базы данных
@@ -41,15 +41,13 @@ class Config:
     IMAGES_DIR = os.getenv("IMAGES_DIR", "images")
     os.makedirs(IMAGES_DIR, exist_ok=True)
 
-    # Модели Claude
-    # CLAUDE_MODEL = "claude-3-opus-20240229"  # Обновлено для совместимости с новой версией API и поддержкой изображений
-    CLAUDE_MODEL = "claude-3-5-haiku-20241022"  # Обновлено на Claude 3.5 Haiku - быстрая модель с улучшенными возможностями
+    # Модель OpenAI (Vision/Text)
 
     # --- OpenAI ---
-    # API-ключ для OpenAI (нужен, если хотите использовать GPT-4(o) Vision)
+    # API-ключ для OpenAI
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    # Модель Vision/Text. Пример: "gpt-4o-mini" или "gpt-4o"
-    GPT_MODEL = os.getenv("GPT_MODEL", "gpt-4o-mini")
+    # Модель (текст/vision, если поддерживается). Пример: "gpt-5-mini"
+    GPT_MODEL = os.getenv("GPT_MODEL", "gpt-5-mini")
 
     # Флаг, указывающий какого провайдера использовать: по умолчанию "openai"
     AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").lower()
@@ -117,6 +115,15 @@ class Config:
     # ID администратора для получения обратной связи
     ADMIN_ID = int(os.getenv("ADMIN_ID", "780848273"))
 
+    # --- Graspil Analytics ---
+    GRASPIL_API_KEY = os.getenv("GRASPIL_API_KEY")
+    # Target IDs для разных событий
+    GRASPIL_TARGET_PURCHASE = int(os.getenv("GRASPIL_TARGET_PURCHASE", "10669"))           # Успешная покупка
+    GRASPIL_TARGET_REGISTRATION = int(os.getenv("GRASPIL_TARGET_REGISTRATION", "10675"))   # Прошёл анкету
+    GRASPIL_TARGET_FIRST_PHOTO = int(os.getenv("GRASPIL_TARGET_FIRST_PHOTO", "10676"))     # Отправил первое фото
+    GRASPIL_TARGET_VIEW_TARIFFS = int(os.getenv("GRASPIL_TARGET_VIEW_TARIFFS", "10677"))   # Узнал тарифы
+    GRASPIL_TARGET_CLICK_PAY = int(os.getenv("GRASPIL_TARGET_CLICK_PAY", "10678"))         # Нажал «Оплатить»
+
 # Создание экземпляра конфигурации
 config = Config()
 
@@ -127,4 +134,4 @@ if not config.SYSTEM_PROMPT_FOOD or len(config.SYSTEM_PROMPT_FOOD.strip()) < 10:
 if not config.SYSTEM_PROMPT_NUTRITION or len(config.SYSTEM_PROMPT_NUTRITION.strip()) < 10:
     logger.warning("ВНИМАНИЕ! Системный промпт для ответов о питании пуст или слишком короткий")
 
-logger.info(f"Конфигурация загружена успешно. Используемая модель: {config.CLAUDE_MODEL}")
+logger.info(f"Конфигурация загружена успешно. Используемая модель OpenAI: {config.GPT_MODEL}")

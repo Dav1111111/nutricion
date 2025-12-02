@@ -112,10 +112,9 @@ class MessageRepository(BaseRepository[Message]):
 
     async def clear_user_history(self, db: AsyncSession, user_id: int) -> int:
         """Очистить историю сообщений пользователя"""
-        result = await db.execute(
-            delete(Message)
-            .where(Message.user_id == user_id)
-        )
+        # Получаем все сообщения пользователя
+        stmt = delete(self.model).where(self.model.user_id == user_id)
+        result = await db.execute(stmt)
         await db.commit()
         return result.rowcount
 

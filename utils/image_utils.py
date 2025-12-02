@@ -28,7 +28,8 @@ class ImageUtils:
         """
         try:
             # Создание директории, если не существует
-            image_dir = os.path.join("images", str(user_id))
+            from config.config import config
+            image_dir = os.path.join(config.IMAGES_DIR, str(user_id))
             os.makedirs(image_dir, exist_ok=True)
 
             # Генерация имени файла

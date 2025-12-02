@@ -18,6 +18,15 @@ class User(Base):
     is_premium = Column(Boolean, default=False)
     language_code = Column(String, default='ru')
 
+    # Физические параметры и данные анкеты
+    age = Column(Integer, nullable=True)
+    gender = Column(String, nullable=True)
+    weight = Column(Float, nullable=True)
+    height = Column(Float, nullable=True)
+    activity_level = Column(String, nullable=True)
+    goal = Column(String, nullable=True)
+    maintain_calories = Column(Float, nullable=True)
+
     # Отношения
     messages = relationship("Message", back_populates="user")
     meal_logs = relationship("MealLog", back_populates="user")

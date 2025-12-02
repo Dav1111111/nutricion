@@ -15,6 +15,8 @@ from utils.inline_keyboards import main_inline_menu
 from aiogram.types import ReplyKeyboardRemove
 from database.subscription_repository import subscription_repository, usage_repository
 from services.payment_service import payment_service
+from handlers.registration_handlers import RegistrationHandlers
+from services.graspil_service import graspil_service
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -41,42 +43,48 @@ class CommandHandlers:
     async def start_command(message: types.Message, state: FSMContext, db: AsyncSession):
         """Обработчик команды /start"""
         try:
-            # Создание или получение пользователя
-            await user_repository.get_or_create_user(
+            # Получаем или создаём пользователя
+            user = await user_repository.get_or_create_user(
                 db,
                 telegram_id=message.from_user.id,
                 username=message.from_user.username,
                 first_name=message.from_user.first_name,
                 last_name=message.from_user.last_name
             )
-
-            # Сброс состояния пользователя
-            await state.clear()
-
-            # Формирование приветственного сообщения
-            welcome_message = (
-                "👋🏻 Начнём наше знакомство.\n\n"
-                "В первую очередь я рассчитываю калорийность и БЖУ по фото, поэтому можешь отправить фото блюда и я рассчитаю примерные КБЖУ.\n\n"
-                "Так же можешь задать вопрос о питании, еде и ЗОЖ.\n\n"
-                "Нажав на кнопку Меню ты увидишь остальные возможности бота:\n\n"
-                "/calories — тут ты можешь задать цель по калориям за день.\n\n"
-                "/day_calories — узнаешь сколько КБЖУ накопилось за день. Данные берутся с фотографий, которые ты скидываешь боту.\n\n"
-                "/today_meals — список блюд с калориями съеденные за сегодня.\n\n"
-                "/reset_today — сбросить данные и начать сначала.\n\n"
-                "/subscription — твоя подписка.\n\n"
-                "/feedback — отправить обратную связь или связаться с поддержкой.\n\n"
-                "Доступно бесплатно:\n"
-                " • 5 распознаваний КБЖУ по фото\n"
-                " • 10 вопросов ИИ нутрициологу\n\n"
-                "Помни: советы носят информационный характер и не заменяют консультацию врача."
-            )
-
-            # Убираем любую клавиатуру под полем ввода
-            await message.answer(welcome_message, reply_markup=ReplyKeyboardRemove())
-
+            
+            # Проверяем, заполнена ли анкета (есть ли данные профиля)
+            if not user.goal or not user.weight or not user.height:
+                # Новый пользователь или профиль не заполнен - показываем приветствие и запускаем анкету
+                await message.answer(
+                    "Привет 👋 Я Ями — твой личный ИИ-нутрициолог. "
+                    "Помогаю считать калории по фото и подбирать питание без стресса и диет 💚\n\n"
+                    "Чтобы мои советы были точнее — давай познакомимся? Это займёт меньше минуты ⏱\n\n"
+                    "Для начала расскажи, какая у тебя цель?"
+                )
+                await RegistrationHandlers.start_registration(message, state)
+            else:
+                # Пользователь уже зарегистрирован - показываем приветствие с возвращением
+                await message.answer(
+                    "👋🏻 С возвращением!\n\n"
+                    "В первую очередь я рассчитываю калорийность и БЖУ по фото, "
+                    "поэтому можешь отправить фото блюда и я рассчитаю примерные КБЖУ.\n\n"
+                    "Так же можешь задать вопрос о питании, еде и ЗОЖ.\n\n"
+                    "Нажав на кнопку Меню ты увидишь остальные возможности бота:\n\n"
+                    "/calories — тут ты можешь задать цель по калориям за день.\n\n"
+                    "/day_calories — узнаешь сколько КБЖУ накопилось за день. "
+                    "Данные берутся с фотографий, которые ты скидываешь боту.\n\n"
+                    "/today_meals — список блюд с калориями съеденные за сегодня.\n\n"
+                    "/reset_today — сбросить данные и начать сначала.\n\n"
+                    "/subscription — твоя подписка.\n\n"
+                    "/feedback — отправить обратную связь или связаться с поддержкой.\n\n"
+                    f"Доступно бесплатно:\n"
+                    f" • {config.FREE_PHOTO_LIMIT} распознаваний КБЖУ по фото\n"
+                    f" • {config.FREE_QUESTION_LIMIT} вопросов ИИ нутрициологу\n\n"
+                    "Помни: советы носят информационный характер и не заменяют консультацию врача."
+                )
         except Exception as e:
-            logger.error(f"Ошибка при обработке команды /start: {str(e)}")
-            await message.answer("Произошла ошибка при обработке команды. Пожалуйста, попробуйте снова.")
+            logger.error(f"Ошибка в обработчике /start: {str(e)}")
+            await message.answer("😔 Произошла ошибка. Пожалуйста, попробуйте позже.")
 
     @staticmethod
     async def help_command(message: types.Message):
@@ -86,6 +94,7 @@ class CommandHandlers:
             "Список команд:\n"
             "/start - Начать работу с ботом\n"
             "/help - Показать это сообщение\n"
+            "/anketa - Пройти анкету заново\n"
             "/question - Задать вопрос о питании\n"
             "/report - Сформировать отчет о питании\n"
             "/prefs - Указать предпочтения в питании\n"
@@ -97,6 +106,87 @@ class CommandHandlers:
         )
         await message.answer(help_text)
         
+    @staticmethod
+    async def cmd_anketa(message: types.Message, state: FSMContext):
+        """Обработчик команды /anketa для перезапуска анкеты"""
+        try:
+            await message.answer(
+                "🔄 Давайте обновим ваши данные.\n\n"
+                "Это поможет мне точнее рассчитывать ваши нормы калорий и БЖУ."
+            )
+            await RegistrationHandlers.start_registration(message, state)
+        except Exception as e:
+            logger.error(f"Ошибка в обработчике /anketa: {str(e)}")
+            await message.answer("😔 Произошла ошибка. Пожалуйста, попробуйте позже.")
+
+    @staticmethod
+    async def cmd_admin_clear(message: types.Message, db: AsyncSession):
+        """Админская команда: очистить данные пользователя по ID или username.
+        Использование: /admin_clear <id|username>
+        """
+        # Простейшая проверка на админа (можно вынести в отдельный список ID)
+        ADMIN_IDS = [600310949]  # Замените на ваш Telegram ID
+        if message.from_user.id not in ADMIN_IDS:
+            return
+
+        args = message.text.split()
+        if len(args) < 2:
+            await message.answer("Укажите telegram_id или username пользователя.\nПример: /admin_clear 123456789")
+            return
+
+        target = args[1]
+        user = None
+
+        if target.isdigit():
+            user = await user_repository.get_by_telegram_id(db, int(target))
+        else:
+            # Поиск по username (убираем @ если есть)
+            username = target.lstrip("@")
+            # Для этого нужен метод get_by_username в репозитории, если его нет - добавим
+            # Пока предположим, что мы ищем по ID, так как username не уникален в telegram_id column
+            # Добавим поиск через select
+            from sqlalchemy import select
+            from models.database import User
+            result = await db.execute(select(User).where(User.username == username))
+            user = result.scalar_one_or_none()
+
+        if not user:
+            await message.answer(f"Пользователь {target} не найден в базе.")
+            return
+
+        try:
+            # Удаляем данные
+            # 1. Историю сообщений
+            await message_repository.clear_user_history(db, user.id)
+            
+            # 2. Логи еды
+            from database.repository import meal_log_repository
+            # Тут нужен метод удаления всех логов пользователя
+            from sqlalchemy import delete
+            from models.database import MealLog, NutritionalGoal, UserPreference, UserUsage
+            
+            await db.execute(delete(MealLog).where(MealLog.user_id == user.id))
+            await db.execute(delete(NutritionalGoal).where(NutritionalGoal.user_id == user.id))
+            await db.execute(delete(UserPreference).where(UserPreference.user_id == user.id))
+            await db.execute(delete(UserUsage).where(UserUsage.user_id == user.id))
+            
+            # 3. Сбрасываем флаги в профиле пользователя
+            user.goal = None
+            user.age = None
+            user.weight = None
+            user.height = None
+            user.gender = None
+            user.activity_level = None
+            user.maintain_calories = None
+            
+            await db.commit()
+            
+            await message.answer(f"✅ Данные пользователя {user.first_name} (ID: {user.telegram_id}) успешно очищены.")
+            
+        except Exception as e:
+            logger.error(f"Ошибка при очистке данных пользователя: {e}")
+            await message.answer("Ошибка при удалении данных.")
+
     @staticmethod
     async def test_prompt_command(message: types.Message):
         """Обработчик команды /test_prompt для проверки работы системного промпта"""
@@ -427,7 +517,7 @@ class CommandHandlers:
             api_result = await debug_api_calls()
             
             # Логирование информации о модели
-            logger.info(f"Используемая модель: {config.CLAUDE_MODEL}")
+            logger.info(f"Используемая модель OpenAI: {config.GPT_MODEL}")
             logger.info(f"Системный промпт для пищи (первые 50 символов): {config.SYSTEM_PROMPT_FOOD[:50]}...")
             logger.info(f"Системный промпт для вопросов (первые 50 символов): {config.SYSTEM_PROMPT_NUTRITION[:50]}...")
             
@@ -443,24 +533,23 @@ class CommandHandlers:
                 )
             
             # Отправка результатов
-            await message.answer(f"✅ Проверка API Claude завершена:\n\n{api_result}")
+            await message.answer(f"✅ Проверка API OpenAI завершена:\n\n{api_result}")
             
             # Добавление информации о модели Claude 3.5 Haiku
             await message.answer(
-                "ℹ️ О модели Claude 3.5 Haiku:\n\n"
-                "Claude 3.5 Haiku - это самая быстрая модель Anthropic с улучшенными возможностями для анализа "
-                "пищи, кодирования и обработки данных. Она оптимизирована для интерактивного общения и "
-                "быстрого анализа изображений. По сравнению с предыдущими версиями, она обеспечивает значительно "
-                "более качественные результаты при сохранении высокой скорости работы."
+                "ℹ️ О модели OpenAI:\n\n"
+                f"Текущая модель: {config.GPT_MODEL}. Поддерживает мультимодальные запросы (Vision) и текстовые ответы."
             )
             
-            await message.answer(f"ℹ️ Информация о настройках бота:\n\n"
-                                f"• Модель: {config.CLAUDE_MODEL}\n"
-                                f"• Максимальное количество токенов: {config.MAX_TOKENS}\n"
-                                f"• Максимальная длина истории: {config.MAX_HISTORY_LENGTH} сообщений\n"
-                                f"• Температура генерации: 0.2 (оптимизирована для точности)")
+            await message.answer(
+                f"ℹ️ Информация о настройках бота:\n\n"
+                f"• Модель: {config.GPT_MODEL}\n"
+                f"• Максимальное количество токенов: {config.MAX_TOKENS}\n"
+                f"• Максимальная длина истории: {config.MAX_HISTORY_LENGTH} сообщений\n"
+                f"• Температура генерации: 0.2 (оптимизирована для точности)"
+            )
             
-            await message.answer("✅ Сброс завершен. Бот использует Claude 3.5 Haiku и должен корректно использовать системные промпты.")
+            await message.answer("✅ Сброс завершен. Бот использует OpenAI и должен корректно использовать системные промпты.")
             
         except Exception as e:
             logger.error(f"Ошибка при сбросе настроек: {str(e)}")
@@ -664,6 +753,9 @@ class CommandHandlers:
     async def cmd_subscription(message: types.Message, db: AsyncSession):
         """Обработчик команды /subscription для оформления или проверки подписки"""
         try:
+            # Отправляем событие в Graspil: узнал тарифы
+            await graspil_service.send_view_tariffs_event(message.from_user.id)
+            
             # Получаем пользователя или создаём
             user = await user_repository.get_or_create_user(
                 db,
@@ -709,6 +801,9 @@ class CommandHandlers:
             )
 
             if payment_info:
+                # Отправляем событие в Graspil: нажал оплатить (показана форма оплаты)
+                await graspil_service.send_click_pay_event(message.from_user.id)
+                
                 # Определяем текст кнопки в зависимости от предыдущей подписки
                 last_sub = await subscription_repository.get_last_subscription(db, user.id)
                 first_btn_text = "💳 Подписаться" if last_sub is None else "💳 Возобновить подписку"
@@ -750,6 +845,8 @@ def register_command_handlers(dp):
     """Регистрация обработчиков команд"""
     # Регистрация обработчиков команд для aiogram 3.x
     dp.message.register(CommandHandlers.start_command, Command("start"))
+    dp.message.register(CommandHandlers.cmd_anketa, Command("anketa"))
+    dp.message.register(CommandHandlers.cmd_admin_clear, Command("admin_clear"))
     dp.message.register(CommandHandlers.help_command, Command("help"))
     dp.message.register(CommandHandlers.cmd_clear, Command("clear"))
     dp.message.register(CommandHandlers.cmd_goals, Command("goals"))

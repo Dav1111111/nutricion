@@ -117,13 +117,16 @@ class PaymentService:
             payment = Payment.find_one(payment_id)
 
             # Если платеж отменён — логируем детали
-            if payment.status == "canceled":
+            if payment.status == "canceled" and getattr(payment, "cancellation_details", None):
                 details = payment.cancellation_details
+                # В ЮKassa это объект, у него есть поля reason и party
+                reason = getattr(details, "reason", None)
+                party = getattr(details, "party", None)
                 logger.warning(
-                    "Платёж %s отменён. Код: %s, Описание: %s",
+                    "Платёж %s отменён. Код: %s, Сторона: %s",
                     payment_id,
-                    details.get("reason"),
-                    details.get("party")
+                    reason,
+                    party,
                 )
 
             return payment.status

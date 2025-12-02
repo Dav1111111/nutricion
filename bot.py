@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config.config import config
 from database.connection import db_connection
 from handlers.command_handlers import register_command_handlers
+from handlers.registration_handlers import register_registration_handlers
 from handlers.message_handlers import register_message_handlers
 from handlers.callback_handlers import register_callback_handlers
 from services.ai_service import ai_service
@@ -38,6 +39,7 @@ dp = Dispatcher(storage=storage)
 
 # Регистрация обработчиков
 register_command_handlers(dp)
+register_registration_handlers(dp)
 register_message_handlers(dp)
 register_callback_handlers(dp)
 
@@ -63,6 +65,7 @@ async def main():
 
         # Устанавливаем список команд, чтобы они появились в системном синем меню Telegram
         commands = [
+            ("anketa", "📝 Анкета"),
             ("calories", "🎯 Задать цель"),
             ("day_calories", "📊 Калории за день"),
             ("today_meals", "📋 Что я ел сегодня"),
@@ -80,7 +83,7 @@ async def main():
         renewal_task = asyncio.create_task(subscription_renewal_service.start())
 
         # Запуск бота
-        logger.info("Запуск бота...")
+        logger.info("Запуск бота (OpenAI)...")
         await dp.start_polling(bot)
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {str(e)}")
