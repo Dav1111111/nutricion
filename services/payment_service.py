@@ -1,11 +1,16 @@
 import logging
 import uuid
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional
 from yookassa import Configuration, Payment
 from yookassa.domain.notification import WebhookNotification
 from config.config import config
 
 logger = logging.getLogger(__name__)
+
+# Thread pool для синхронных вызовов Yookassa
+_executor = ThreadPoolExecutor(max_workers=3)
 
 
 class PaymentService:
@@ -16,6 +21,8 @@ class PaymentService:
         if config.YOOKASSA_SHOP_ID and config.YOOKASSA_SECRET_KEY:
             Configuration.account_id = config.YOOKASSA_SHOP_ID
             Configuration.secret_key = config.YOOKASSA_SECRET_KEY
+            # Устанавливаем таймаут для requests (используется yookassa внутри)
+            Configuration.configure_timeout(15)  # 15 секунд таймаут
             logger.info("ЮKassa сконфигурирована успешно")
         else:
             logger.warning("ЮKassa не настроена - отсутствуют YOOKASSA_SHOP_ID или YOOKASSA_SECRET_KEY")
@@ -47,7 +54,19 @@ class PaymentService:
             if metadata:
                 payment_data["metadata"] = metadata
             
-            payment = Payment.create(payment_data, idempotency_key)
+            # Выполняем синхронный вызов в отдельном потоке с таймаутом
+            loop = asyncio.get_event_loop()
+            try:
+                payment = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        _executor,
+                        lambda: Payment.create(payment_data, idempotency_key)
+                    ),
+                    timeout=20.0  # 20 секунд максимум
+                )
+            except asyncio.TimeoutError:
+                logger.error("Таймаут при создании платежа в Yookassa")
+                return None
             
             logger.info(f"Создан платеж {payment.id} на сумму {amount} руб.")
             
