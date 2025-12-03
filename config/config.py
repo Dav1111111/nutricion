@@ -56,7 +56,7 @@ class Config:
     MAX_TOKENS = 2000
 
     # Максимальное количество сообщений в истории
-    MAX_HISTORY_LENGTH = 10
+    MAX_HISTORY_LENGTH = 5  # Уменьшено для экономии токенов
 
     # Системные промпты
     SYSTEM_PROMPT_FOOD = """

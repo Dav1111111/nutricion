@@ -307,12 +307,16 @@ class AIService:
             # Формируем сообщения для запроса
             messages = []
             
-            # Добавляем историю сообщений, если она есть
+            # Добавляем историю сообщений, если она есть (с ограничением длины)
+            MAX_MSG_LENGTH = 1000  # Максимальная длина одного сообщения в истории
             if history:
                 for msg in history[-self.max_history_length:]:
                     role = msg.get("role")
                     content = msg.get("content")
                     if role and content:
+                        # Обрезаем слишком длинные сообщения
+                        if len(content) > MAX_MSG_LENGTH:
+                            content = content[:MAX_MSG_LENGTH] + "..."
                         messages.append({"role": role, "content": content})
             
             modified_question = question
