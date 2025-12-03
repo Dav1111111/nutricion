@@ -348,6 +348,18 @@ class CallbackHandlers:
     async def handle_subscribe(callback: types.CallbackQuery, db: AsyncSession):
         """Обработчик кнопки подписки"""
         try:
+            # Проверяем, отключены ли платежи
+            import os
+            if os.getenv("PAYMENTS_DISABLED", "").lower() == "true":
+                await callback.message.edit_text(
+                    "⚙️ *Оплата временно недоступна*\n\n"
+                    "Ведутся технические работы. Попробуйте позже.\n\n"
+                    "Приносим извинения за неудобства! 🙏",
+                    parse_mode="Markdown"
+                )
+                await callback.answer()
+                return
+            
             # Отправляем событие в Graspil: узнал тарифы
             await graspil_service.send_view_tariffs_event(callback.from_user.id)
             

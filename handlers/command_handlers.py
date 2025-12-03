@@ -753,6 +753,17 @@ class CommandHandlers:
     async def cmd_subscription(message: types.Message, db: AsyncSession):
         """Обработчик команды /subscription для оформления или проверки подписки"""
         try:
+            # Проверяем, отключены ли платежи
+            import os
+            if os.getenv("PAYMENTS_DISABLED", "").lower() == "true":
+                await message.answer(
+                    "⚙️ *Оплата временно недоступна*\n\n"
+                    "Ведутся технические работы. Попробуйте позже.\n\n"
+                    "Приносим извинения за неудобства! 🙏",
+                    parse_mode="Markdown"
+                )
+                return
+            
             # Отправляем событие в Graspil: узнал тарифы
             await graspil_service.send_view_tariffs_event(message.from_user.id)
             
