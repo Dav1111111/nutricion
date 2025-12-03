@@ -37,7 +37,12 @@ class AIService:
                 logger.error("OPENAI_API_KEY не найден в переменных окружения")
                 raise ValueError("OPENAI_API_KEY не найден в переменных окружения")
 
-            self.client = AsyncOpenAI(api_key=self.api_key)
+            # Увеличенный таймаут для нестабильного соединения
+            import httpx
+            self.client = AsyncOpenAI(
+                api_key=self.api_key,
+                timeout=httpx.Timeout(120.0, connect=30.0)  # 120 сек общий, 30 сек на подключение
+            )
             self.model_name = config.GPT_MODEL
 
             logger.info(f"Используем OpenAI модель: {self.model_name}")
