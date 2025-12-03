@@ -21,8 +21,6 @@ class PaymentService:
         if config.YOOKASSA_SHOP_ID and config.YOOKASSA_SECRET_KEY:
             Configuration.account_id = config.YOOKASSA_SHOP_ID
             Configuration.secret_key = config.YOOKASSA_SECRET_KEY
-            # Устанавливаем таймаут для requests (используется yookassa внутри)
-            Configuration.configure_timeout(15)  # 15 секунд таймаут
             logger.info("ЮKassa сконфигурирована успешно")
         else:
             logger.warning("ЮKassa не настроена - отсутствуют YOOKASSA_SHOP_ID или YOOKASSA_SECRET_KEY")
