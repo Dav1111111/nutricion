@@ -662,14 +662,6 @@ class MessageHandlers:
             # Получение ответа от AI
             response = await ai_service.answer_nutrition_question(message.text, history)
 
-            # Сохранение ответа ассистента
-            ai_message = await message_repository.create(
-                db,
-                user_id=user_id,
-                role="assistant",
-                content=response
-            )
-
             # Удаление сообщения о обработке
             if processing_msg and hasattr(processing_msg, 'message_id'):
                 try:
@@ -677,8 +669,20 @@ class MessageHandlers:
                 except Exception as delete_error:
                     logger.warning(f"Не удалось удалить сообщение о обработке: {str(delete_error)}")
 
+            # Проверяем ответ ПЕРЕД сохранением в историю
+            is_valid_response = response and response.strip() and "Не удалось получить ответ" not in response
+            
+            # Сохраняем в историю ТОЛЬКО валидный ответ
+            if is_valid_response:
+                ai_message = await message_repository.create(
+                    db,
+                    user_id=user_id,
+                    role="assistant",
+                    content=response
+                )
+
             # Отправка ответа без дополнительных кнопок
-            safe_response = response if (response and response.strip()) else "😔 Не удалось получить ответ. Пожалуйста, попробуйте снова."
+            safe_response = response if is_valid_response else "😔 Не удалось получить ответ. Пожалуйста, попробуйте снова."
             try:
                 sent_message = await message.answer(safe_response, parse_mode="Markdown")
             except TelegramBadRequest:

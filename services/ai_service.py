@@ -309,11 +309,17 @@ class AIService:
             
             # Добавляем историю сообщений, если она есть (с ограничением длины)
             MAX_MSG_LENGTH = 1000  # Максимальная длина одного сообщения в истории
+            # Паттерны ошибок, которые не должны попадать в контекст
+            ERROR_PATTERNS = ["Не удалось получить ответ", "Произошла ошибка", "😔"]
+            
             if history:
                 for msg in history[-self.max_history_length:]:
                     role = msg.get("role")
                     content = msg.get("content")
                     if role and content:
+                        # Пропускаем сообщения с ошибками
+                        if any(err in content for err in ERROR_PATTERNS):
+                            continue
                         # Обрезаем слишком длинные сообщения
                         if len(content) > MAX_MSG_LENGTH:
                             content = content[:MAX_MSG_LENGTH] + "..."
