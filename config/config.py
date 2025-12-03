@@ -53,7 +53,7 @@ class Config:
     AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").lower()
 
     # Максимальное количество токенов в ответе
-    MAX_TOKENS = 2000
+    MAX_TOKENS = 4096
 
     # Максимальное количество сообщений в истории
     MAX_HISTORY_LENGTH = 5  # Уменьшено для экономии токенов

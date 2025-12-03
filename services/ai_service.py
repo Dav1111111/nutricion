@@ -264,7 +264,7 @@ class AIService:
                         model=self.model_name,
                         messages=messages,
                         **self._temperature_param(0.1),
-                        **self._token_limit_param(2000),
+                        **self._token_limit_param(config.MAX_TOKENS),
                     )
 
                     response_text = response.choices[0].message.content
@@ -337,7 +337,7 @@ class AIService:
                     model=self.model_name,
                     messages=[{"role": m.get("role"), "content": m.get("content")} for m in messages],
                     **self._temperature_param(0.1),
-                    **self._token_limit_param(2000),
+                    **self._token_limit_param(config.MAX_TOKENS),
                 )
 
                 response_text = response.choices[0].message.content
