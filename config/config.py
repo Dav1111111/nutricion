@@ -46,7 +46,7 @@ class Config:
     # --- OpenAI ---
     # API-ключ для OpenAI
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    # Модель (текст/vision, если поддерживается). Пример: "gpt-5-mini"
+    # Модель (текст/vision, если поддерживается)
     GPT_MODEL = os.getenv("GPT_MODEL", "gpt-5-mini")
 
     # Флаг, указывающий какого провайдера использовать: по умолчанию "openai"

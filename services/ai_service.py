@@ -326,9 +326,22 @@ class AIService:
                 )
 
                 response_text = response.choices[0].message.content
+                
+                # Полное логирование для дебага
+                logger.info(f"OpenAI response finish_reason: {response.choices[0].finish_reason}")
+                logger.info(f"OpenAI response content type: {type(response_text)}")
+                logger.info(f"OpenAI response content length: {len(response_text) if response_text else 0}")
+                
+                # Проверка на None или пустой ответ
+                if response_text is None:
+                    logger.warning("OpenAI вернул None вместо ответа")
+                    response_text = ""
 
             # Логирование для диагностики
-            logger.info(f"Первые 100 символов ответа на вопрос: {response_text[:100]}...")
+            if response_text:
+                logger.info(f"Первые 100 символов ответа на вопрос: {response_text[:100]}...")
+            else:
+                logger.warning("Получен пустой ответ от AI")
 
             # Финальная очистка
             response_text = self._sanitize_response(response_text)
