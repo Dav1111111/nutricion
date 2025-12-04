@@ -348,17 +348,8 @@ class CallbackHandlers:
     async def handle_subscribe(callback: types.CallbackQuery, db: AsyncSession):
         """Обработчик кнопки подписки"""
         try:
-            # Проверяем, отключены ли платежи
             import os
-            if os.getenv("PAYMENTS_DISABLED", "").lower() == "true":
-                await callback.message.edit_text(
-                    "⚙️ *Оплата временно недоступна*\n\n"
-                    "Ведутся технические работы. Попробуйте позже.\n\n"
-                    "Приносим извинения за неудобства! 🙏",
-                    parse_mode="Markdown"
-                )
-                await callback.answer()
-                return
+            payments_disabled = os.getenv("PAYMENTS_DISABLED", "").lower() == "true"
             
             # Отправляем событие в Graspil: узнал тарифы
             await graspil_service.send_view_tariffs_event(callback.from_user.id)
@@ -383,6 +374,23 @@ class CallbackHandlers:
             usage = await usage_repository.get_or_create_usage(db, user.id)
             remaining_photos = max(0, config.FREE_PHOTO_LIMIT - usage.photos_used)
             remaining_questions = max(0, config.FREE_QUESTION_LIMIT - usage.questions_used)
+
+            # Если платежи отключены - показываем тарифы без возможности оплаты
+            if payments_disabled:
+                await callback.message.edit_text(
+                    f"💳 *Подписка ИИ Нутрициолог*\n\n"
+                    f"📊 Ваши лимиты: {remaining_photos} фото / {remaining_questions} вопросов\n\n"
+                    f"*Тариф «Премиум»*\n"
+                    f"💰 Стоимость: {config.SUBSCRIPTION_PRICE} ₽ на {config.SUBSCRIPTION_DAYS} дней\n\n"
+                    f"Что входит:\n"
+                    f"✅ Безлимитный анализ фото\n"
+                    f"✅ Безлимитные вопросы нутрициологу\n"
+                    f"✅ Персональные рекомендации\n\n"
+                    f"⚙️ _Оплата временно недоступна. Скоро вернёмся!_",
+                    parse_mode="Markdown"
+                )
+                await callback.answer()
+                return
 
             # Формируем URL, по которому пользователь вернётся после оплаты
             return_url = f"https://t.me/{(await callback.bot.get_me()).username}"
@@ -410,7 +418,7 @@ class CallbackHandlers:
                 
                 await callback.message.edit_text(
                     f"💳 *Подписка ИИ Нутрициолог*\n\n"
-                    f"Бесплатные лимиты: {remaining_photos} распознаваний КБЖУ по фото / {remaining_questions} вопросов ИИ нутрициологу\n"
+                    f"📊 Ваши лимиты: {remaining_photos} фото / {remaining_questions} вопросов\n\n"
                     f"Стоимость: {config.SUBSCRIPTION_PRICE} ₽ на {config.SUBSCRIPTION_DAYS} дней\n\n"
                     f"После оплаты вы получите:\n"
                     f"✅ Безлимитный анализ фото\n"
