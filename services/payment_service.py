@@ -1,29 +1,42 @@
 import logging
+import os
 import uuid
 import asyncio
+import aiohttp
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional
-from yookassa import Configuration, Payment
-from yookassa.domain.notification import WebhookNotification
 from config.config import config
 
 logger = logging.getLogger(__name__)
 
-# Thread pool для синхронных вызовов Yookassa
+# Thread pool для синхронных вызовов Yookassa (если без микросервиса)
 _executor = ThreadPoolExecutor(max_workers=3)
+
+# URL платёжного микросервиса
+PAYMENT_SERVICE_URL = os.getenv("PAYMENT_SERVICE_URL", "")
 
 
 class PaymentService:
-    """Сервис для работы с ЮKassa"""
+    """Сервис для работы с платежами (через микросервис или напрямую)"""
     
     def __init__(self):
         """Инициализация сервиса"""
-        if config.YOOKASSA_SHOP_ID and config.YOOKASSA_SECRET_KEY:
-            Configuration.account_id = config.YOOKASSA_SHOP_ID
-            Configuration.secret_key = config.YOOKASSA_SECRET_KEY
-            logger.info("ЮKassa сконфигурирована успешно")
+        self.use_microservice = bool(PAYMENT_SERVICE_URL)
+        
+        if self.use_microservice:
+            logger.info(f"Используем платёжный микросервис: {PAYMENT_SERVICE_URL}")
         else:
-            logger.warning("ЮKassa не настроена - отсутствуют YOOKASSA_SHOP_ID или YOOKASSA_SECRET_KEY")
+            # Прямое подключение к Yookassa
+            try:
+                from yookassa import Configuration
+                if config.YOOKASSA_SHOP_ID and config.YOOKASSA_SECRET_KEY:
+                    Configuration.account_id = config.YOOKASSA_SHOP_ID
+                    Configuration.secret_key = config.YOOKASSA_SECRET_KEY
+                    logger.info("ЮKassa сконфигурирована напрямую")
+                else:
+                    logger.warning("ЮKassa не настроена - отсутствуют YOOKASSA_SHOP_ID или YOOKASSA_SECRET_KEY")
+            except ImportError:
+                logger.warning("yookassa не установлена, используйте микросервис")
     
     async def create_payment(
         self, 
@@ -32,8 +45,73 @@ class PaymentService:
         return_url: str,
         metadata: Optional[Dict] = None
     ) -> Optional[Dict]:
-        """Создать платеж в ЮKassa"""
+        """Создать платеж (через микросервис или напрямую)"""
+        
+        # Через микросервис
+        if self.use_microservice:
+            return await self._create_payment_via_api(amount, description, return_url, metadata)
+        
+        # Напрямую через Yookassa
+        return await self._create_payment_direct(amount, description, return_url, metadata)
+    
+    async def _create_payment_via_api(
+        self,
+        amount: float,
+        description: str,
+        return_url: str,
+        metadata: Optional[Dict] = None
+    ) -> Optional[Dict]:
+        """Создать платеж через микросервис"""
         try:
+            user_id = metadata.get("user_id", 0) if metadata else 0
+            telegram_id = metadata.get("telegram_id", 0) if metadata else 0
+            
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "amount": int(amount),
+                    "description": description,
+                    "return_url": return_url,
+                    "user_id": user_id,
+                    "telegram_id": telegram_id
+                }
+                
+                async with session.post(
+                    f"{PAYMENT_SERVICE_URL}/create-payment",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        logger.info(f"Платёж создан через API: {data.get('id')}")
+                        return {
+                            "id": data.get("id"),
+                            "status": data.get("status"),
+                            "confirmation_url": data.get("confirmation_url"),
+                            "amount": amount
+                        }
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Ошибка создания платежа через API: {response.status} - {error_text}")
+                        return None
+                        
+        except aiohttp.ClientError as e:
+            logger.error(f"Ошибка соединения с платёжным сервисом: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка при создании платежа через API: {str(e)}")
+            return None
+    
+    async def _create_payment_direct(
+        self,
+        amount: float,
+        description: str,
+        return_url: str,
+        metadata: Optional[Dict] = None
+    ) -> Optional[Dict]:
+        """Создать платеж напрямую через Yookassa"""
+        try:
+            from yookassa import Payment
+            
             idempotency_key = str(uuid.uuid4())
             
             payment_data = {
@@ -129,8 +207,39 @@ class PaymentService:
             return await self.create_payment(amount, description, return_url, metadata)
     
     async def check_payment_status(self, payment_id: str) -> Optional[str]:
-        """Проверить статус платежа и логировать детали отмены, если есть"""
+        """Проверить статус платежа"""
+        
+        # Через микросервис
+        if self.use_microservice:
+            return await self._check_payment_via_api(payment_id)
+        
+        # Напрямую
+        return await self._check_payment_direct(payment_id)
+    
+    async def _check_payment_via_api(self, payment_id: str) -> Optional[str]:
+        """Проверить статус через микросервис"""
         try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{PAYMENT_SERVICE_URL}/check-payment/{payment_id}",
+                    timeout=aiohttp.ClientTimeout(total=15)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        status = data.get("status")
+                        logger.info(f"Статус платежа {payment_id}: {status}")
+                        return status
+                    else:
+                        logger.error(f"Ошибка проверки платежа через API: {response.status}")
+                        return None
+        except Exception as e:
+            logger.error(f"Ошибка при проверке платежа через API: {str(e)}")
+            return None
+    
+    async def _check_payment_direct(self, payment_id: str) -> Optional[str]:
+        """Проверить статус напрямую через Yookassa"""
+        try:
+            from yookassa import Payment
             payment = Payment.find_one(payment_id)
 
             # Если платеж отменён — логируем детали
