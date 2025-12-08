@@ -378,18 +378,18 @@ class CallbackHandlers:
             # Если платежи отключены - показываем тарифы без возможности оплаты
             if payments_disabled:
                 await callback.message.edit_text(
-                    f"💳 *Подписка ИИ Нутрициолог*\n\n"
+                    f"💳 <b>Подписка ИИ Нутрициолог</b>\n\n"
                     f"📊 Ваши лимиты: {remaining_photos} фото / {remaining_questions} вопросов\n\n"
-                    f"*Тариф «Премиум Месяц»*\n"
+                    f"<b>Тариф «Премиум Месяц»</b>\n"
                     f"💰 Стоимость: {config.SUBSCRIPTION_PRICE} ₽ на 30 дней\n\n"
-                    f"*Тариф «Премиум Год»*\n"
+                    f"<b>Тариф «Премиум Год»</b>\n"
                     f"💰 Стоимость: 3 999 ₽ на 1 год (2 месяца бесплатно)\n\n"
                     f"Что входит:\n"
                     f"✅ Безлимитный анализ фото\n"
                     f"✅ Безлимитные вопросы нутрициологу\n\n"
-                    f"_Нажимая на кнопку «Подписаться», вы соглашаетесь с [Офертой](https://docs.google.com/document/d/1SnnvHDQwrguwi7ckFwoKmiDKHx0T7LVohN3wTVNvZ6s/edit)_\n\n"
-                    f"⚙️ _Оплата временно недоступна. Скоро вернёмся!_",
-                    parse_mode="Markdown"
+                    f"<i>Нажимая на кнопку «Подписаться», вы соглашаетесь с <a href='https://docs.google.com/document/d/1SnnvHDQwrguwi7ckFwoKmiDKHx0T7LVohN3wTVNvZ6s/edit'>Офертой</a></i>\n\n"
+                    f"⚙️ <i>Оплата временно недоступна. Скоро вернёмся!</i>",
+                    parse_mode="HTML"
                 )
                 await callback.answer()
                 return
