@@ -387,7 +387,7 @@ class CallbackHandlers:
                     f"Что входит:\n"
                     f"✅ Безлимитный анализ фото\n"
                     f"✅ Безлимитные вопросы нутрициологу\n\n"
-                    f"_Нажимая на кнопку «Подписаться», вы соглашаетесь с Офертой_\n\n"
+                    f"_Нажимая на кнопку «Подписаться», вы соглашаетесь с [Офертой](https://docs.google.com/document/d/1SnnvHDQwrguwi7ckFwoKmiDKHx0T7LVohN3wTVNvZ6s/edit)_\n\n"
                     f"⚙️ _Оплата временно недоступна. Скоро вернёмся!_",
                     parse_mode="Markdown"
                 )
