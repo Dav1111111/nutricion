@@ -131,7 +131,13 @@ class Config:
     FREE_PHOTO_LIMIT = int(os.getenv("FREE_PHOTO_LIMIT", "5"))
     FREE_QUESTION_LIMIT = int(os.getenv("FREE_QUESTION_LIMIT", "10"))
 
-    # Данные ЮKassa (опционально, используются только при оформлении подписки)
+    # Данные Робокассы
+    ROBOKASSA_MERCHANT_LOGIN = os.getenv("ROBOKASSA_MERCHANT_LOGIN")
+    ROBOKASSA_PASSWORD1 = os.getenv("ROBOKASSA_PASSWORD1")
+    ROBOKASSA_PASSWORD2 = os.getenv("ROBOKASSA_PASSWORD2")
+    ROBOKASSA_TEST_MODE = os.getenv("ROBOKASSA_TEST_MODE", "false").lower() == "true"
+    
+    # Данные ЮKassa (устаревшее, используется Робокасса)
     YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
     YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 

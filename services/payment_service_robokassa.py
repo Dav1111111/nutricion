@@ -1,6 +1,5 @@
 import logging
 import hashlib
-import time
 from typing import Dict, Optional
 from urllib.parse import urlencode
 from config.config import config
@@ -8,7 +7,7 @@ from config.config import config
 logger = logging.getLogger(__name__)
 
 
-class PaymentService:
+class RobokassaPaymentService:
     """Сервис для работы с платежами через Робокассу"""
     
     # URL для оплаты
@@ -19,7 +18,7 @@ class PaymentService:
         self.merchant_login = config.ROBOKASSA_MERCHANT_LOGIN
         self.password1 = config.ROBOKASSA_PASSWORD1
         self.password2 = config.ROBOKASSA_PASSWORD2
-        self.test_mode = getattr(config, 'ROBOKASSA_TEST_MODE', False)
+        self.test_mode = config.ROBOKASSA_TEST_MODE
         
         if self.merchant_login and self.password1:
             logger.info(f"Робокасса сконфигурирована для магазина: {self.merchant_login}")
@@ -46,15 +45,24 @@ class PaymentService:
                 logger.error("Робокасса не настроена")
                 return None
             
-            # Получаем данные из metadata
+            # Используем user_id как InvId (номер заказа)
             user_id = metadata.get("user_id", 0) if metadata else 0
             telegram_id = metadata.get("telegram_id", 0) if metadata else 0
             
-            # Генерируем уникальный номер заказа (InvId)
-            inv_id = int(time.time() * 1000) % 2147483647
+            # Генерируем уникальный номер заказа
+            import time
+            inv_id = int(time.time() * 1000) % 2147483647  # Ограничение Робокассы
             
-            # Сумма в рублях
+            # Сумма в рублях (целое число или с копейками)
             out_sum = f"{amount:.2f}"
+            
+            # Формируем подпись: MerchantLogin:OutSum:InvId:Password1
+            signature = self._generate_signature(
+                self.merchant_login,
+                out_sum,
+                inv_id,
+                self.password1
+            )
             
             # Дополнительные параметры (Shp_) - передаём user_id и telegram_id
             shp_params = {
@@ -62,8 +70,9 @@ class PaymentService:
                 "Shp_user_id": user_id
             }
             
-            # Формируем подпись с доп. параметрами (в алфавитном порядке)
+            # Подпись с доп. параметрами (в алфавитном порядке)
             # MerchantLogin:OutSum:InvId:Password1:Shp_telegram_id=X:Shp_user_id=Y
+            shp_string = ":".join(f"{k}={v}" for k, v in sorted(shp_params.items()))
             signature = self._generate_signature(
                 self.merchant_login,
                 out_sum,
@@ -89,7 +98,7 @@ class PaymentService:
             # Формируем URL для оплаты
             payment_url = f"{self.PAYMENT_URL}?{urlencode(params)}"
             
-            logger.info(f"Создана ссылка на оплату Робокасса: InvId={inv_id}, сумма={amount} руб., user_id={user_id}")
+            logger.info(f"Создана ссылка на оплату Робокасса: InvId={inv_id}, сумма={amount} руб.")
             
             return {
                 "id": str(inv_id),
@@ -152,4 +161,4 @@ class PaymentService:
 
 
 # Создание экземпляра сервиса
-payment_service = PaymentService() 
+payment_service = RobokassaPaymentService()
