@@ -8,8 +8,9 @@ from aiohttp import web
 from datetime import datetime, timedelta
 
 from config.config import config
-from database.database import async_session
-from database.repositories import user_repository, subscription_repository
+from database.connection import db_connection
+from database.repository import user_repository
+from database.subscription_repository import subscription_repository
 from services.payment_service import payment_service
 
 logging.basicConfig(level=logging.INFO)
@@ -61,7 +62,7 @@ async def handle_robokassa_result(request: web.Request) -> web.Response:
             return web.Response(text="bad sign", status=400)
         
         # Активируем подписку
-        async with async_session() as db:
+        async with db_connection.async_session() as db:
             # Находим пользователя
             user = await user_repository.get_by_id(db, user_id)
             if not user:
