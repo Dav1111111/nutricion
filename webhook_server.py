@@ -71,22 +71,25 @@ async def handle_robokassa_result(request: web.Request) -> web.Response:
             if not user:
                 logger.error(f"Пользователь не найден: user_id={user_id}, telegram_id={telegram_id}")
                 return web.Response(text="user not found", status=400)
-            
-            # Создаём подписку
-            start_date = datetime.utcnow()
-            end_date = start_date + timedelta(days=config.SUBSCRIPTION_DAYS)
-            
-            subscription = await subscription_repository.create(
-                db=db,
+
+            # Создаём pending-подписку (если её ещё нет) и активируем её
+            await subscription_repository.create_subscription(
+                db,
                 user_id=user.id,
                 payment_id=inv_id,
                 amount=float(out_sum),
-                status="succeeded",
-                start_date=start_date,
-                end_date=end_date
             )
-            
-            logger.info(f"Подписка активирована для user_id={user.id}, до {end_date}")
+
+            subscription = await subscription_repository.activate_subscription(db, payment_id=inv_id)
+            if not subscription:
+                logger.error(f"Не удалось активировать подписку для InvId={inv_id}, user_id={user.id}")
+                return web.Response(text="subscription not activated", status=500)
+
+            logger.info(
+                "Подписка активирована для user_id=%s, до %s",
+                user.id,
+                subscription.end_date,
+            )
         
         # Робокасса ожидает ответ "OK" + InvId
         return web.Response(text=f"OK{inv_id}")
