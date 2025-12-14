@@ -6,12 +6,14 @@ import asyncio
 import logging
 from aiohttp import web
 from datetime import datetime, timedelta
+from sqlalchemy import select
 
 from config.config import config
 from database.connection import db_connection
 from database.repository import user_repository
 from database.subscription_repository import subscription_repository
 from services.payment_service import payment_service
+from models.database import UserSubscription
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -72,15 +74,26 @@ async def handle_robokassa_result(request: web.Request) -> web.Response:
                 logger.error(f"Пользователь не найден: user_id={user_id}, telegram_id={telegram_id}")
                 return web.Response(text="user not found", status=400)
 
-            # Создаём pending-подписку (если её ещё нет) и активируем её
-            await subscription_repository.create_subscription(
-                db,
-                user_id=user.id,
-                payment_id=inv_id,
-                amount=float(out_sum),
-            )
-
+            # Делаем обработку идемпотентной:
+            # 1) если запись уже есть (бот создал pending) — просто активируем
+            # 2) если записи нет — создаём pending и активируем
             subscription = await subscription_repository.activate_subscription(db, payment_id=inv_id)
+            if not subscription:
+                # Проверяем, есть ли запись с таким payment_id (на всякий случай)
+                existing = await db.execute(
+                    select(UserSubscription).where(UserSubscription.payment_id == inv_id)
+                )
+                existing_sub = existing.scalar_one_or_none()
+
+                if not existing_sub:
+                    await subscription_repository.create_subscription(
+                        db,
+                        user_id=user.id,
+                        payment_id=inv_id,
+                        amount=float(out_sum),
+                    )
+
+                subscription = await subscription_repository.activate_subscription(db, payment_id=inv_id)
             if not subscription:
                 logger.error(f"Не удалось активировать подписку для InvId={inv_id}, user_id={user.id}")
                 return web.Response(text="subscription not activated", status=500)
