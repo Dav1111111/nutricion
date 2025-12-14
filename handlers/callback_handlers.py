@@ -462,39 +462,43 @@ class CallbackHandlers:
 
     @staticmethod
     async def handle_check_payment(callback: types.CallbackQuery, db: AsyncSession):
-        """Проверка статуса платежа"""
+        """Проверка статуса платежа (проверяем в БД, т.к. Робокасса не имеет API статуса)"""
         try:
             payment_id = callback.data.split("_")[2]
             
-            # Проверяем статус платежа
-            status = await payment_service.check_payment_status(payment_id)
+            # Проверяем статус подписки в БД (Робокасса активирует через webhook)
+            from sqlalchemy import select
+            from models.database import UserSubscription
             
-            if status == "succeeded":
-                # Активируем подписку
-                subscription = await subscription_repository.activate_subscription(db, payment_id)
-                if subscription:
-                    # Сбрасываем счетчики
-                    await usage_repository.reset_usage(db, subscription.user_id)
-                    
-                    # Отправляем событие в Graspil: успешная покупка
-                    await graspil_service.send_purchase_event(
-                        callback.from_user.id,
-                        amount=float(subscription.amount),
-                        currency="RUB"
-                    )
-                    
-                    end_date = subscription.end_date.strftime("%d.%m.%Y")
-                    await callback.message.edit_text(
-                        f"✅ *Подписка активирована!*\n\n"
-                        f"Срок действия: до {end_date}\n"
-                        f"Теперь вы можете пользоваться всеми функциями без ограничений!\n\n"
-                        f"Спасибо за поддержку проекта! 🙏",
-                        parse_mode="Markdown"
-                    )
-            elif status == "pending" or status == "waiting_for_capture":
-                await callback.answer("⏳ Платеж еще обрабатывается. Попробуйте проверить через минуту.")
+            result = await db.execute(
+                select(UserSubscription).where(UserSubscription.payment_id == payment_id)
+            )
+            subscription = result.scalar_one_or_none()
+            
+            if subscription and subscription.status == "succeeded":
+                # Подписка уже активирована через webhook
+                # Сбрасываем счетчики (если ещё не сброшены)
+                await usage_repository.reset_usage(db, subscription.user_id)
+                
+                # Отправляем событие в Graspil: успешная покупка
+                await graspil_service.send_purchase_event(
+                    callback.from_user.id,
+                    amount=float(subscription.amount),
+                    currency="RUB"
+                )
+                
+                end_date = subscription.end_date.strftime("%d.%m.%Y")
+                await callback.message.edit_text(
+                    f"✅ *Подписка активирована!*\n\n"
+                    f"Срок действия: до {end_date}\n"
+                    f"Теперь вы можете пользоваться всеми функциями без ограничений!\n\n"
+                    f"Спасибо за поддержку проекта! 🙏",
+                    parse_mode="Markdown"
+                )
+            elif subscription and subscription.status == "pending":
+                await callback.answer("⏳ Платеж еще обрабатывается. Подождите 1-2 минуты и попробуйте снова.")
             else:
-                await callback.answer("❌ Платеж не прошел. Попробуйте оплатить заново.")
+                await callback.answer("❌ Платеж не найден. Попробуйте оплатить заново.")
                 
         except Exception as e:
             logger.error(f"Ошибка при проверке платежа: {str(e)}")
