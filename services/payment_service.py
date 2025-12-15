@@ -1,8 +1,9 @@
 import logging
 import hashlib
 import time
+import json
 from typing import Dict, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from config.config import config
 
 logger = logging.getLogger(__name__)
@@ -62,12 +63,29 @@ class PaymentService:
                 "Shp_user_id": user_id
             }
             
-            # Формируем подпись с доп. параметрами (в алфавитном порядке)
-            # MerchantLogin:OutSum:InvId:Password1:Shp_telegram_id=X:Shp_user_id=Y
+            # Формируем Receipt для фискализации (54-ФЗ)
+            receipt = {
+                "items": [
+                    {
+                        "name": "Подписка ИИ Нутрициолог 30 дней",
+                        "quantity": 1,
+                        "sum": amount,
+                        "payment_method": "full_payment",
+                        "payment_object": "service",
+                        "tax": "none"
+                    }
+                ]
+            }
+            receipt_json = json.dumps(receipt, ensure_ascii=False)
+            receipt_encoded = quote(receipt_json)
+            
+            # Формируем подпись с Receipt и доп. параметрами (в алфавитном порядке)
+            # MerchantLogin:OutSum:InvId:Receipt:Password1:Shp_telegram_id=X:Shp_user_id=Y
             signature = self._generate_signature(
                 self.merchant_login,
                 out_sum,
                 inv_id,
+                receipt_encoded,
                 self.password1,
                 *[f"{k}={v}" for k, v in sorted(shp_params.items())]
             )
@@ -78,6 +96,7 @@ class PaymentService:
                 "OutSum": out_sum,
                 "InvId": inv_id,
                 "Description": description[:100],  # Ограничение 100 символов
+                "Receipt": receipt_encoded,
                 "SignatureValue": signature,
                 **shp_params
             }
